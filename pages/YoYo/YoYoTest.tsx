@@ -276,6 +276,7 @@ const YoYoTest: React.FC = () => {
   // Refs
   const requestRef = useRef<number>(0);
   const lastBeepRef = useRef<string>(""); // Track last beep to prevent duplicates
+  const lastAnnouncedDistanceRef = useRef<number>(0); // Track last announced distance milestone
   const audioEngineRef = useRef<AudioEngine | null>(null);
 
   // Refs for loop state access
@@ -344,6 +345,7 @@ const YoYoTest: React.FC = () => {
     setTestStartTime(null);
     setActiveParticipants(new Set(PARTICIPANTS));
     setWarnedParticipants(new Set());
+    lastAnnouncedDistanceRef.current = 0;
   };
 
   // Warn or remove a participant (first click warns, second click removes)
@@ -387,6 +389,39 @@ const YoYoTest: React.FC = () => {
     }
     return currentPhase.cumDistance;
   };
+
+  // Announce distance using Web Speech API
+  const announceDistance = useCallback((distance: number) => {
+    if ("speechSynthesis" in window) {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(`${distance} meters`);
+      utterance.rate = 1.1;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
+
+  // Check and announce distance milestones (every 160m)
+  const checkDistanceMilestone = useCallback(
+    (currentDistance: number) => {
+      const milestone = 160;
+      const currentMilestone =
+        Math.floor(currentDistance / milestone) * milestone;
+
+      if (
+        currentMilestone > 0 &&
+        currentMilestone > lastAnnouncedDistanceRef.current
+      ) {
+        lastAnnouncedDistanceRef.current = currentMilestone;
+        announceDistance(currentMilestone);
+      }
+    },
+    [announceDistance]
+  );
 
   const handleAudioTriggers = useCallback(
     (phase: TestPhase, phaseElapsed: number) => {
@@ -452,12 +487,20 @@ const YoYoTest: React.FC = () => {
     setElapsedTime(totalElapsedSeconds);
 
     const phaseElapsed = totalElapsedSeconds - phase.startTime;
-    setPhaseProgress(Math.min(1, Math.max(0, phaseElapsed / phase.duration)));
+    const progress = Math.min(1, Math.max(0, phaseElapsed / phase.duration));
+    setPhaseProgress(progress);
+
+    // Calculate current distance and check for milestone announcements
+    let currentDistance = phase.cumDistance;
+    if (phase.type === "RUN") {
+      currentDistance += Math.floor(progress * 40);
+    }
+    checkDistanceMilestone(currentDistance);
 
     handleAudioTriggers(phase, phaseElapsed);
 
     requestRef.current = requestAnimationFrame(updateLoop);
-  }, [handleAudioTriggers]);
+  }, [handleAudioTriggers, checkDistanceMilestone]);
 
   useEffect(() => {
     if (isRunning) {

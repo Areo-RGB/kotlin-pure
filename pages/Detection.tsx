@@ -54,6 +54,31 @@ const Detection: React.FC = () => {
   const [tripwireHeight, setTripwireHeight] = useState(100);
   const [useWebGL, setUseWebGL] = useState(true); // GPU acceleration
 
+  // Reusable AudioContext to prevent memory leaks
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+
+  // Initialize AudioContext once
+  React.useEffect(() => {
+    try {
+      // @ts-ignore
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass && !audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass();
+      }
+    } catch (e) {
+      console.error("Failed to initialize AudioContext:", e);
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch((e) => {
+          console.error("Error closing AudioContext:", e);
+        });
+      }
+    };
+  }, []);
+
   // Animation loop
   React.useEffect(() => {
     let frameId: number;
@@ -79,12 +104,15 @@ const Detection: React.FC = () => {
 
   const playBeep = () => {
     if (!soundEnabled) return;
-    try {
-      // @ts-ignore
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
+    const ctx = audioContextRef.current;
+    if (!ctx) return;
 
-      const ctx = new AudioContext();
+    try {
+      // Resume context if suspended (required by browser autoplay policies)
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -100,6 +128,12 @@ const Detection: React.FC = () => {
 
       osc.start();
       osc.stop(ctx.currentTime + 0.15);
+
+      // Clean up oscillator after it stops
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
     } catch (e) {
       console.error("Audio error:", e);
     }
