@@ -1,16 +1,6 @@
 
 
-export interface Player {
-  name: string;
-  score: number;
-}
-
-export interface LobbyData {
-  players: Player[];
-  lastUpdated: number;
-}
-
-export type MotionGateRole = 'START' | 'FINISH' | 'DISPLAY' | 'UNASSIGNED' | 'GAME';
+export type MotionGateRole = 'START' | 'FINISH' | 'SPLIT' | 'DISPLAY' | 'UNASSIGNED' | 'GAME';
 
 export interface MotionGateDevice {
   id: string;
@@ -34,20 +24,3 @@ export interface MotionGateSession {
   devices?: Record<string, MotionGateDevice>;
   history?: Record<string, MotionGateRun>;
 }
-
-export const ANDERSON_NAMES = [
-  'Eray',
-  'Silas',
-  'Finley',
-  'Kayden',
-  'Erik',
-  'Arvid',
-  'Lion',
-  'Jakob',
-  'Paul',
-  'Lennox',
-  'Levi',
-  'Lasse',
-  'Metin',
-  'Berat'
-];

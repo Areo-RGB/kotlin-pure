@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Eye, Activity, Timer, Zap, Heart, Hash } from 'lucide-react';
+import { Eye, Activity, Timer, Zap, Heart, Hash } from 'lucide-react';
 import { MenuCard } from '../components/Ui/MenuCard';
 import { Header } from '../components/Ui/Header';
 
@@ -15,14 +15,6 @@ const Tools: React.FC = () => {
       />
 
       <div className="flex flex-col gap-4 p-6">
-        <MenuCard 
-          onClick={() => navigate('/anderson/lobby')} 
-          title="Anderson"
-          description="Group Score & Session Manager"
-          icon={<Users size={24} />}
-          colorClass="bg-emerald-500"
-        />
-
         <MenuCard 
           onClick={() => navigate('/motion-gate')} 
           title="Motion Gate"

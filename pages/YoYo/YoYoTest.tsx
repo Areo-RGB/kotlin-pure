@@ -2,8 +2,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/Ui/Button';
-import { ChevronLeft, Play, Pause, RotateCcw, Volume2 } from 'lucide-react';
+import { ChevronLeft, Play, Pause, RotateCcw, Volume2, Timer, Users, X, AlertTriangle } from 'lucide-react';
 import { getServerTime } from '../../services/firebase';
+
+// --- Hardcoded Participants ---
+const PARTICIPANTS = [
+  'Eray', 'Silas', 'Finley', 'Kayden', 'Erik', 'Arvid', 'Lion', 'Jakob',
+  'Paul', 'Lennox', 'Levi', 'Lasse', 'Metin', 'Berat', 'Finn', 'Lionel'
+];
 
 // --- Types ---
 interface TestPhase {
@@ -195,6 +201,13 @@ const PROTOCOL = generateProtocol();
 const YoYoTest: React.FC = () => {
   const navigate = useNavigate();
 
+  // --- Tab State ---
+  const [activeTab, setActiveTab] = useState<'test' | 'results'>('test');
+
+  // --- Participant State ---
+  const [activeParticipants, setActiveParticipants] = useState<Set<string>>(new Set(PARTICIPANTS));
+  const [warnedParticipants, setWarnedParticipants] = useState<Set<string>>(new Set());
+
   // --- State ---
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -269,6 +282,50 @@ const YoYoTest: React.FC = () => {
     setCurrentPhase(PROTOCOL[0]);
     setPhaseProgress(0);
     setTestStartTime(null);
+    setActiveParticipants(new Set(PARTICIPANTS));
+    setWarnedParticipants(new Set());
+  };
+
+  // Warn or remove a participant (first click warns, second click removes)
+  const handleParticipantAction = (name: string) => {
+    if (warnedParticipants.has(name)) {
+      // Already warned, now remove
+      setActiveParticipants(prev => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+      setWarnedParticipants(prev => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    } else {
+      // First click - warn the participant
+      setWarnedParticipants(prev => new Set(prev).add(name));
+    }
+  };
+
+  // Clear warning for a participant
+  const clearWarning = (name: string) => {
+    setWarnedParticipants(prev => {
+      const next = new Set(prev);
+      next.delete(name);
+      return next;
+    });
+  };
+
+  // Get current distance for display
+  const getCurrentDistance = () => {
+    if (testFinished) return PROTOCOL[PROTOCOL.length - 1].cumDistance + 40;
+    if (!hasStarted) return 0;
+    
+    // During RUN phase, add partial distance
+    if (currentPhase.type === 'RUN') {
+      const partialDistance = Math.floor(phaseProgress * 40);
+      return currentPhase.cumDistance + partialDistance;
+    }
+    return currentPhase.cumDistance;
   };
 
   const handleAudioTriggers = useCallback((phase: TestPhase, phaseElapsed: number) => {
@@ -386,102 +443,257 @@ const YoYoTest: React.FC = () => {
         <div className="w-10" />
       </div>
 
-      {/* Main Content - Flex-grow to fill space */}
-      <div className="flex-1 flex flex-col min-h-0">
-          
-          {/* Top Section - Timer & Phase */}
-          <div className="flex-[2] flex flex-col items-center justify-center p-6 relative">
-             <div className="absolute inset-0 opacity-10 pointer-events-none">
-                 <div className={`w-full h-full transition-colors duration-500 ${currentPhase.type === 'RUN' ? 'bg-emerald-500' : 'bg-orange-500'}`} />
-             </div>
-
-             <div className={`text-xl font-bold uppercase tracking-widest mb-2 transition-colors duration-300 ${getPhaseColor()}`}>
-                {testFinished ? 'TEST COMPLETE' : currentPhase.type}
-             </div>
-             
-             <div className="text-[15vw] sm:text-[8rem] font-mono font-bold text-white tracking-tighter tabular-nums leading-none drop-shadow-2xl">
-                {formatTime(elapsedTime)}
-             </div>
-
-             {/* Progress Bar */}
-             <div className="w-full max-w-sm h-3 bg-gray-800 rounded-full mt-8 overflow-hidden border border-gray-700">
-                 <div 
-                    className={`h-full transition-all duration-100 ease-linear ${getPhaseBg()}`} 
-                    style={{ width: `${phaseProgress * 100}%` }}
-                 />
-             </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="flex-[3] grid grid-cols-2 gap-px bg-gray-800 border-t border-gray-800">
-             <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
-                <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Level</div>
-                <div className="text-5xl font-bold text-white">
-                    {currentPhase.level}<span className="text-2xl text-gray-500">.{currentPhase.shuttle}</span>
-                </div>
-             </div>
-
-             <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
-                <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Speed</div>
-                <div className="text-5xl font-bold text-white">
-                    {currentPhase.speed} <span className="text-lg text-gray-500">km/h</span>
-                </div>
-             </div>
-
-             <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
-                <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Distance</div>
-                <div className="text-5xl font-bold text-white">
-                    {testFinished ? PROTOCOL[PROTOCOL.length-1].cumDistance + 40 : currentPhase.cumDistance}<span className="text-lg text-gray-500">m</span>
-                </div>
-             </div>
-
-             <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
-                <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Next Beep</div>
-                <div className="text-5xl font-mono font-bold text-indigo-400 tabular-nums">
-                    {timeToNextBeep().toFixed(1)}
-                </div>
-             </div>
-          </div>
+      {/* Tab Navigation */}
+      <div className="flex-none bg-gray-900 border-b border-gray-800">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('test')}
+            className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 font-semibold text-sm transition-colors ${
+              activeTab === 'test'
+                ? 'text-white border-b-2 border-emerald-500 bg-gray-800/50'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Timer size={18} />
+            Test
+          </button>
+          <button
+            onClick={() => setActiveTab('results')}
+            className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 font-semibold text-sm transition-colors ${
+              activeTab === 'results'
+                ? 'text-white border-b-2 border-emerald-500 bg-gray-800/50'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Users size={18} />
+            Results
+            <span className="bg-gray-700 text-gray-300 text-xs px-1.5 py-0.5 rounded-full">
+              {activeParticipants.size}
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* Footer Controls */}
-      <div className="flex-none bg-gray-900 border-t border-gray-800 p-6 pb-[env(safe-area-inset-bottom)]">
-          <div className="max-w-md mx-auto flex items-center justify-between gap-6">
-            
-            <button 
-                onClick={resetTest}
-                disabled={!hasStarted}
-                className={`h-14 w-14 rounded-full flex items-center justify-center border border-gray-700 bg-gray-800 text-white transition-all ${!hasStarted ? 'opacity-30' : 'hover:bg-gray-700'}`}
-                aria-label="Reset Test"
-            >
-                <RotateCcw size={20} />
-            </button>
+      {/* Tab Content */}
+      {activeTab === 'test' ? (
+        <>
+          {/* Main Content - Flex-grow to fill space */}
+          <div className="flex-1 flex flex-col min-h-0">
+              
+              {/* Top Section - Timer & Phase */}
+              <div className="flex-[2] flex flex-col items-center justify-center p-6 relative">
+                 <div className="absolute inset-0 opacity-10 pointer-events-none">
+                     <div className={`w-full h-full transition-colors duration-500 ${currentPhase.type === 'RUN' ? 'bg-emerald-500' : 'bg-orange-500'}`} />
+                 </div>
 
-            <button
-                onClick={isRunning ? stopTest : (hasStarted ? resumeTest : startTest)}
-                className={`h-20 flex-1 rounded-2xl flex items-center justify-center gap-3 transition-all duration-200 shadow-xl text-lg font-bold uppercase tracking-wider ${
-                    isRunning 
-                        ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
-                }`}
-            >
-                {isRunning ? (
-                    <>
-                        <Pause size={28} fill="currentColor" /> Pause
-                    </>
-                ) : (
-                    <>
-                        <Play size={28} fill="currentColor" /> {hasStarted ? 'Resume' : 'Start Test'}
-                    </>
-                )}
-            </button>
+                 <div className={`text-xl font-bold uppercase tracking-widest mb-2 transition-colors duration-300 ${getPhaseColor()}`}>
+                    {testFinished ? 'TEST COMPLETE' : currentPhase.type}
+                 </div>
+                 
+                 <div className="text-[15vw] sm:text-[8rem] font-mono font-bold text-white tracking-tighter tabular-nums leading-none drop-shadow-2xl">
+                    {formatTime(elapsedTime)}
+                 </div>
 
-            <div className="w-14 flex items-center justify-center">
-                <Volume2 className="text-gray-600" size={24} />
+                 {/* Progress Bar */}
+                 <div className="w-full max-w-sm h-3 bg-gray-800 rounded-full mt-8 overflow-hidden border border-gray-700">
+                     <div 
+                        className={`h-full transition-all duration-100 ease-linear ${getPhaseBg()}`} 
+                        style={{ width: `${phaseProgress * 100}%` }}
+                     />
+                 </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="flex-[3] grid grid-cols-2 gap-px bg-gray-800 border-t border-gray-800">
+                 <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Level</div>
+                    <div className="text-5xl font-bold text-white">
+                        {currentPhase.level}<span className="text-2xl text-gray-500">.{currentPhase.shuttle}</span>
+                    </div>
+                 </div>
+
+                 <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Speed</div>
+                    <div className="text-5xl font-bold text-white">
+                        {currentPhase.speed} <span className="text-lg text-gray-500">km/h</span>
+                    </div>
+                 </div>
+
+                 <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Distance</div>
+                    <div className="text-5xl font-bold text-white">
+                        {getCurrentDistance()}<span className="text-lg text-gray-500">m</span>
+                    </div>
+                 </div>
+
+                 <div className="bg-gray-900/50 p-6 flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Next Beep</div>
+                    <div className="text-5xl font-mono font-bold text-indigo-400 tabular-nums">
+                        {timeToNextBeep().toFixed(1)}
+                    </div>
+                 </div>
+              </div>
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex-none bg-gray-900 border-t border-gray-800 p-6 pb-[env(safe-area-inset-bottom)]">
+              <div className="max-w-md mx-auto flex items-center justify-between gap-6">
+                
+                <button 
+                    onClick={resetTest}
+                    disabled={!hasStarted}
+                    className={`h-14 w-14 rounded-full flex items-center justify-center border border-gray-700 bg-gray-800 text-white transition-all ${!hasStarted ? 'opacity-30' : 'hover:bg-gray-700'}`}
+                    aria-label="Reset Test"
+                >
+                    <RotateCcw size={20} />
+                </button>
+
+                <button
+                    onClick={isRunning ? stopTest : (hasStarted ? resumeTest : startTest)}
+                    className={`h-20 flex-1 rounded-2xl flex items-center justify-center gap-3 transition-all duration-200 shadow-xl text-lg font-bold uppercase tracking-wider ${
+                        isRunning 
+                            ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
+                    }`}
+                >
+                    {isRunning ? (
+                        <>
+                            <Pause size={28} fill="currentColor" /> Pause
+                        </>
+                    ) : (
+                        <>
+                            <Play size={28} fill="currentColor" /> {hasStarted ? 'Resume' : 'Start Test'}
+                        </>
+                    )}
+                </button>
+
+                <div className="w-14 flex items-center justify-center">
+                    <Volume2 className="text-gray-600" size={24} />
+                </div>
+              </div>
+          </div>
+        </>
+      ) : (
+        /* Results Tab */
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Current Distance Banner */}
+          <div className={`flex-none p-4 border-b border-gray-800 ${hasStarted ? (currentPhase.type === 'RUN' ? 'bg-emerald-900/30' : 'bg-orange-900/30') : 'bg-gray-900/50'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider">Current Distance</div>
+                <div className="text-3xl font-bold text-white tabular-nums">
+                  {getCurrentDistance()}<span className="text-lg text-gray-500">m</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-400 uppercase tracking-wider">Level</div>
+                <div className="text-2xl font-bold text-white">
+                  {currentPhase.level}<span className="text-lg text-gray-500">.{currentPhase.shuttle}</span>
+                </div>
+              </div>
             </div>
           </div>
-      </div>
 
+          {/* Participants Grid */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-2">
+              {/* Header Row */}
+              <div className="grid grid-cols-2 gap-4 px-4 py-2 text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                <div>Name</div>
+                <div className="text-right">Distance</div>
+              </div>
+              
+              {/* Participant Rows */}
+              {PARTICIPANTS.map((name) => {
+                const isActive = activeParticipants.has(name);
+                const isWarned = warnedParticipants.has(name);
+                const distance = isActive ? getCurrentDistance() : 0;
+                
+                return (
+                  <div
+                    key={name}
+                    className={`grid grid-cols-2 gap-4 items-center px-4 py-3 rounded-xl transition-all ${
+                      !isActive
+                        ? 'bg-gray-900/30 border border-gray-800/50 opacity-50'
+                        : isWarned
+                        ? 'bg-yellow-900/30 border border-yellow-500/50'
+                        : 'bg-gray-800/80 border border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                        !isActive 
+                          ? 'bg-gray-700 text-gray-500' 
+                          : isWarned 
+                          ? 'bg-yellow-500/20 text-yellow-400' 
+                          : 'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                        {isWarned ? <AlertTriangle size={16} /> : name.charAt(0)}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`font-medium ${isActive ? 'text-white' : 'text-gray-500 line-through'}`}>
+                          {name}
+                        </span>
+                        {isWarned && (
+                          <span className="text-xs text-yellow-400">Warning issued</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-end gap-2">
+                      {isActive ? (
+                        <>
+                          <span className={`text-lg font-bold tabular-nums ${isWarned ? 'text-yellow-300' : 'text-white'}`}>
+                            {distance}<span className="text-sm text-gray-500">m</span>
+                          </span>
+                          {isWarned && (
+                            <button
+                              onClick={() => clearWarning(name)}
+                              className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                              title="Clear warning"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleParticipantAction(name)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              isWarned 
+                                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                                : 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                            }`}
+                            title={isWarned ? "Mark as dropped out" : "Issue warning"}
+                          >
+                            {isWarned ? <X size={16} /> : <AlertTriangle size={16} />}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-gray-600 text-sm">Dropped out</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Results Footer */}
+          <div className="flex-none bg-gray-900 border-t border-gray-800 p-4 pb-[env(safe-area-inset-bottom)]">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-400">
+                <span className="text-emerald-400 font-bold">{activeParticipants.size}</span> active
+                {warnedParticipants.size > 0 && (
+                  <span className="text-yellow-400 ml-1">({warnedParticipants.size} warned)</span>
+                )}
+                <span className="text-gray-500"> / {PARTICIPANTS.length}</span>
+              </span>
+              <span className={`font-semibold ${isRunning ? 'text-emerald-400' : 'text-gray-500'}`}>
+                {isRunning ? '● Test Running' : hasStarted ? '● Paused' : '○ Not Started'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

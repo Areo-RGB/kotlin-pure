@@ -64,7 +64,9 @@ const MotionGateWebRTCGame: React.FC = () => {
     const [gameState, setGameState] = useState<'IDLE' | 'RUNNING' | 'FINISHED'>('IDLE');
     const [startTime, setStartTime] = useState<number | null>(null);
     const [displayTime, setDisplayTime] = useState(0);
-    const [history, setHistory] = useState<{ id: number, duration: number }[]>([]);
+    const [splitTimes, setSplitTimes] = useState<{ timestamp: number; duration: number; deviceId: string; deviceName: string }[]>([]);
+    const [finishTime, setFinishTime] = useState<number | null>(null);
+    const [history, setHistory] = useState<{ id: number, duration: number, splits: { duration: number; deviceName: string }[] }[]>([]);
 
     // UI State
     const [showSettings, setShowSettings] = useState(false);
@@ -76,8 +78,8 @@ const MotionGateWebRTCGame: React.FC = () => {
     const [logs, setLogs] = useState<string[]>([]);
 
     // --- Refs ---
-    const stateRef = useRef({ myRole, gameState, startTime, isLocalArmed });
-    useEffect(() => { stateRef.current = { myRole, gameState, startTime, isLocalArmed }; }, [myRole, gameState, startTime, isLocalArmed]);
+    const stateRef = useRef({ myRole, gameState, startTime, isLocalArmed, splitTimes });
+    useEffect(() => { stateRef.current = { myRole, gameState, startTime, isLocalArmed, splitTimes }; }, [myRole, gameState, startTime, isLocalArmed, splitTimes]);
 
     const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
     const dataChannels = useRef<Record<string, RTCDataChannel>>({});
@@ -462,21 +464,43 @@ const MotionGateWebRTCGame: React.FC = () => {
             setGameState('RUNNING');
             setStartTime(msg.timestamp);
             setDisplayTime(0);
+            setSplitTimes([]);
+            setFinishTime(null);
             setFlash(true);
             setTimeout(() => setFlash(false), 200);
+        }
+        else if (msg.type === 'SPLIT') {
+            if (stateRef.current.gameState === 'RUNNING') {
+                const duration = msg.timestamp - (stateRef.current.startTime || 0);
+                setSplitTimes(prev => [...prev, {
+                    timestamp: msg.timestamp,
+                    duration,
+                    deviceId: msg.senderId,
+                    deviceName: msg.deviceName || `Device ${msg.senderId.substr(0, 3)}`
+                }]);
+                setFlash(true);
+                setTimeout(() => setFlash(false), 150);
+            }
         }
         else if (msg.type === 'FINISH') {
             if (stateRef.current.gameState === 'RUNNING') {
                 setGameState('FINISHED');
                 const duration = msg.timestamp - (stateRef.current.startTime || 0);
                 setDisplayTime(duration);
-                setHistory(prev => [{ id: Date.now(), duration }, ...prev]);
+                setFinishTime(msg.timestamp);
+                setHistory(prev => [{
+                    id: Date.now(),
+                    duration,
+                    splits: stateRef.current.splitTimes.map(s => ({ duration: s.duration, deviceName: s.deviceName }))
+                }, ...prev]);
             }
         }
         else if (msg.type === 'RESET') {
             setGameState('IDLE');
             setStartTime(null);
             setDisplayTime(0);
+            setSplitTimes([]);
+            setFinishTime(null);
         }
     };
 
@@ -487,17 +511,39 @@ const MotionGateWebRTCGame: React.FC = () => {
         if (myRole === 'START' && (gameState === 'IDLE' || gameState === 'FINISHED')) {
             setGameState('RUNNING');
             setStartTime(now);
+            setSplitTimes([]);
+            setFinishTime(null);
             setIsLocalArmed(false);
             // Broadcast Start
             broadcast({ type: 'START', timestamp: now, senderId: deviceId });
             playBeep(1200);
         }
+        else if (myRole === 'SPLIT' && gameState === 'RUNNING') {
+            const duration = now - (startTime || 0);
+            setSplitTimes(prev => [...prev, {
+                timestamp: now,
+                duration,
+                deviceId,
+                deviceName
+            }]);
+            setIsLocalArmed(false);
+            // Broadcast Split
+            broadcast({ type: 'SPLIT', timestamp: now, senderId: deviceId, deviceName });
+            playBeep(1000);
+            setFlash(true);
+            setTimeout(() => setFlash(false), 150);
+        }
         else if (myRole === 'FINISH' && gameState === 'RUNNING') {
             setGameState('FINISHED');
             const duration = now - (startTime || 0);
             setDisplayTime(duration);
+            setFinishTime(now);
             setIsLocalArmed(false);
-            setHistory(prev => [{ id: now, duration }, ...prev]);
+            setHistory(prev => [{
+                id: now,
+                duration,
+                splits: splitTimes.map(s => ({ duration: s.duration, deviceName: s.deviceName }))
+            }, ...prev]);
             // Broadcast Finish
             broadcast({ type: 'FINISH', timestamp: now, senderId: deviceId });
             playBeep(1200);
@@ -508,6 +554,8 @@ const MotionGateWebRTCGame: React.FC = () => {
         setGameState('IDLE');
         setStartTime(null);
         setDisplayTime(0);
+        setSplitTimes([]);
+        setFinishTime(null);
         broadcast({ type: 'RESET', timestamp: Date.now(), senderId: deviceId });
     };
 
@@ -545,6 +593,7 @@ const MotionGateWebRTCGame: React.FC = () => {
     const isSetupMode = myRole === 'UNASSIGNED' || showSettings;
     const isSensorActive = isLocalArmed && (
         (myRole === 'START' && (gameState === 'IDLE' || gameState === 'FINISHED')) ||
+        (myRole === 'SPLIT' && gameState === 'RUNNING') ||
         (myRole === 'FINISH' && gameState === 'RUNNING')
     );
 
@@ -588,17 +637,59 @@ const MotionGateWebRTCGame: React.FC = () => {
             {/* Main Game View */}
             <div className={`absolute inset-0 transition-opacity duration-500 ${isSetupMode ? 'opacity-10 pointer-events-none' : 'opacity-100'}`}>
                 {myRole === 'DISPLAY' ? (
-                    <div className="flex flex-col items-center justify-center h-full bg-gray-900">
-                        <div className={`text-[20vw] font-mono font-bold tabular-nums tracking-tighter leading-none ${gameState === 'RUNNING' ? 'text-white' : 'text-gray-500'}`}>
+                    <div className="flex flex-col items-center justify-center h-full bg-gray-900 px-4">
+                        {/* Main Timer */}
+                        <div className={`text-[15vw] sm:text-[20vw] font-mono font-bold tabular-nums tracking-tighter leading-none ${gameState === 'RUNNING' ? 'text-white' : 'text-gray-500'}`}>
                             {(displayTime / 1000).toFixed(2)}s
                         </div>
+                        
+                        {/* Split Times Display */}
+                        {(splitTimes.length > 0 || gameState === 'FINISHED') && (
+                            <div className="mt-6 w-full max-w-md space-y-2">
+                                {/* Start */}
+                                <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
+                                    <span className="text-emerald-400 font-semibold text-sm">START</span>
+                                    <span className="font-mono text-emerald-300 text-lg">0.00s</span>
+                                </div>
+                                
+                                {/* Splits */}
+                                {splitTimes.map((split, idx) => (
+                                    <div key={idx} className="flex items-center justify-between bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-2">
+                                        <span className="text-blue-400 font-semibold text-sm">SPLIT {idx + 1}</span>
+                                        <div className="text-right">
+                                            <span className="font-mono text-blue-300 text-lg">{(split.duration / 1000).toFixed(2)}s</span>
+                                            {idx > 0 && (
+                                                <span className="text-blue-500/70 text-xs ml-2">
+                                                    (+{((split.duration - splitTimes[idx - 1].duration) / 1000).toFixed(2)}s)
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                                
+                                {/* Finish */}
+                                {gameState === 'FINISHED' && (
+                                    <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2">
+                                        <span className="text-red-400 font-semibold text-sm">FINISH</span>
+                                        <div className="text-right">
+                                            <span className="font-mono text-red-300 text-lg">{(displayTime / 1000).toFixed(2)}s</span>
+                                            {splitTimes.length > 0 && (
+                                                <span className="text-red-500/70 text-xs ml-2">
+                                                    (+{((displayTime - splitTimes[splitTimes.length - 1].duration) / 1000).toFixed(2)}s)
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="relative w-full h-full bg-gray-900">
                         <MotionTripwire
                             isActive={isSensorActive}
                             onTrigger={handleMotionTrigger}
-                            color={myRole === 'START' ? 'green' : 'red'}
+                            color={myRole === 'START' ? 'green' : myRole === 'SPLIT' ? 'blue' : 'red'}
                             blurRadius={blurRadius}
                             cooldownMs={cooldownMs}
                         />
@@ -670,6 +761,7 @@ const MotionGateWebRTCGame: React.FC = () => {
                                         >
                                             <option value="UNASSIGNED">Unassigned</option>
                                             <option value="START">Start Gate</option>
+                                            <option value="SPLIT">Split Gate</option>
                                             <option value="FINISH">Finish Gate</option>
                                             <option value="DISPLAY">Display</option>
                                         </select>
@@ -707,6 +799,7 @@ const MotionGateWebRTCGame: React.FC = () => {
                                                 >
                                                     <option value="UNASSIGNED">Unassigned</option>
                                                     <option value="START">Start Gate</option>
+                                                    <option value="SPLIT">Split Gate</option>
                                                     <option value="FINISH">Finish Gate</option>
                                                     <option value="DISPLAY">Display</option>
                                                 </select>

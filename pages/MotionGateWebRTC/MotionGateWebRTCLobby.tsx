@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { joinLobby } from '../../services/firebase';
+import { initMotionGateSession } from '../../services/firebase';
 import { LobbyScreen } from '../../components/Ui/LobbyScreen';
 import { Wifi } from 'lucide-react';
 
@@ -9,18 +9,18 @@ const MotionGateWebRTCLobby: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const joinWithTimeout = (id: string) => {
-    const timeout = new Promise<boolean>((_, reject) => 
+  const initWithTimeout = (id: string) => {
+    const timeout = new Promise<void>((_, reject) => 
       setTimeout(() => reject(new Error("Connection timeout")), 2000)
     );
-    return Promise.race([joinLobby(id), timeout]);
+    return Promise.race([initMotionGateSession(id), timeout]);
   };
 
   const handleEnter = async () => {
     if (lobbyId.length !== 3) return;
     setLoading(true);
     try {
-      await joinWithTimeout(lobbyId);
+      await initWithTimeout(lobbyId);
     } catch (error) {
       console.warn("Could not verify lobby (likely offline). Proceeding locally.", error);
     }
@@ -32,7 +32,7 @@ const MotionGateWebRTCLobby: React.FC = () => {
     setLoading(true);
     const randomId = Math.floor(100 + Math.random() * 900).toString();
     try {
-      await joinWithTimeout(randomId);
+      await initWithTimeout(randomId);
     } catch (error) {
       console.warn("Proceeding locally.", error);
     }

@@ -1,7 +1,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, get, update, runTransaction, child, remove } from 'firebase/database';
-import { Player, ANDERSON_NAMES, MotionGateRole, MotionGateRun } from '../types';
+import { MotionGateRole, MotionGateRun } from '../types';
 
 // Configuration using the provided Realtime Database URL
 const firebaseConfig = {
@@ -29,98 +29,6 @@ export const getServerTime = () => {
 // --- Refs ---
 export const getLobbyRef = (lobbyId: string) => ref(db, `lobbies/${lobbyId}`);
 export const getMotionGateRef = (lobbyId: string) => ref(db, `lobbies/${lobbyId}/motionGate`);
-
-// --- Anderson Logic ---
-
-/**
- * Initializes a lobby if it doesn't exist with the default player list.
- * Checks existence first (requires connection or cache).
- */
-export const joinLobby = async (lobbyId: string): Promise<boolean> => {
-  const lobbyRef = getLobbyRef(lobbyId);
-  const snapshot = await get(lobbyRef);
-
-  if (!snapshot.exists()) {
-    await initializeLobbyWithDefaults(lobbyId);
-  }
-  return true;
-};
-
-/**
- * Directly initializes the lobby with default players.
- * Uses runTransaction to avoid overwriting sibling nodes (like motionGate).
- */
-export const initializeLobbyWithDefaults = async (lobbyId: string) => {
-  const lobbyRef = getLobbyRef(lobbyId);
-  const initialPlayers: Player[] = ANDERSON_NAMES.map(name => ({
-    name,
-    score: 0
-  }));
-  
-  await runTransaction(lobbyRef, (current) => {
-    // If no data exists, create it
-    if (!current) {
-      return {
-        players: initialPlayers,
-        createdAt: Date.now()
-      };
-    }
-    // If data exists but players are missing, add them without wiping other properties
-    if (!current.players) {
-      return {
-        ...current,
-        players: initialPlayers
-      };
-    }
-    // Already valid
-    return undefined;
-  });
-};
-
-/**
- * Updates a single player's score.
- */
-export const updatePlayerScore = async (lobbyId: string, playerName: string, delta: number) => {
-  const lobbyRef = getLobbyRef(lobbyId);
-  
-  await runTransaction(lobbyRef, (currentData) => {
-    if (currentData && currentData.players) {
-      const updatedPlayers = currentData.players.map((p: Player) => {
-        if (p.name === playerName) {
-          return { ...p, score: p.score + delta };
-        }
-        return p;
-      });
-      return { ...currentData, players: updatedPlayers, lastUpdated: Date.now() };
-    }
-    return currentData;
-  });
-};
-
-/**
- * Updates scores for all players, optionally filtered by a list of names.
- * If includedNames is provided, only players in that list will be updated.
- */
-export const updateAllScores = async (lobbyId: string, delta: number, includedNames?: string[]) => {
-  const lobbyRef = getLobbyRef(lobbyId);
-  
-  await runTransaction(lobbyRef, (currentData) => {
-    if (currentData && currentData.players) {
-      const updatedPlayers = currentData.players.map((p: Player) => {
-        // If filter is provided and player is not in it, skip update
-        if (includedNames && !includedNames.includes(p.name)) {
-          return p;
-        }
-        return {
-          ...p,
-          score: p.score + delta
-        };
-      });
-      return { ...currentData, players: updatedPlayers, lastUpdated: Date.now() };
-    }
-    return currentData;
-  });
-};
 
 // --- Motion Gate Logic ---
 
