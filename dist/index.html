@@ -11,9 +11,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" type="image/png" href="/icons/android/android-launchericon-192-192.png">
     <link rel="apple-touch-icon" href="/icons/ios/180.png">
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/assets/manifest-BgnMqLEx.json">
 
     <title>ScoreSync Tools</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Recommended MediaPipe Vision Bundle -->
     <script type="importmap">
     {
       "imports": {
@@ -30,17 +34,10 @@
       }
     }
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- Recommended MediaPipe Vision Bundle -->
     <script type="module" src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <!-- Offline Signaling Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-    <script type="module">
-      import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm';
-      window.QRCode = QRCode;
-    </script>
     <script>
       tailwind.config = {
         darkMode: 'class',
@@ -85,11 +82,11 @@
       }
     </style>
 
+  <script type="module" crossorigin src="/assets/index-BpyqZ9HD.js"></script>
 </head>
   <body class="bg-gray-950 text-white antialiased min-h-screen relative">
     <div id="root" class="relative z-10"></div>
     <!-- Entry point for Vite build -->
-    <script type="module" src="/index.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
