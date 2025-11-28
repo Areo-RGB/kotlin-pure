@@ -395,7 +395,10 @@ const YoYoTest: React.FC = () => {
 
       if (phase.type === "RUN") {
         // Start beep at beginning of run phase
-        if (phaseElapsed < 0.15 && lastBeepRef.current !== `${phase.id}-start`) {
+        if (
+          phaseElapsed < 0.15 &&
+          lastBeepRef.current !== `${phase.id}-start`
+        ) {
           audioEngine.playStartSound();
           lastBeepRef.current = `${phase.id}-start`;
         }
@@ -412,7 +415,10 @@ const YoYoTest: React.FC = () => {
         }
       } else if (phase.type === "RECOVERY") {
         // Beep at start of recovery phase
-        if (phaseElapsed < 0.15 && lastBeepRef.current !== `${phase.id}-start`) {
+        if (
+          phaseElapsed < 0.15 &&
+          lastBeepRef.current !== `${phase.id}-start`
+        ) {
           audioEngine.playTurnSound();
           lastBeepRef.current = `${phase.id}-start`;
         }
