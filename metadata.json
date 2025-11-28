@@ -1,0 +1,7 @@
+{
+  "name": "Anderson-Sprint-Refactor",
+  "description": "Real-time collaborative score tracking tool with session management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
