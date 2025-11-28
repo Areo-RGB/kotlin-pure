@@ -393,43 +393,28 @@ const YoYoTest: React.FC = () => {
       const audioEngine = audioEngineRef.current;
       if (!audioEngine) return;
 
-      const timeLeft = phase.duration - phaseElapsed;
-      const key = `${phase.id}-${Math.floor(phaseElapsed)}`;
-
-      if (lastBeepRef.current === key) return;
-
       if (phase.type === "RUN") {
-        if (phaseElapsed < 0.2 && lastBeepRef.current !== `${phase.id}-start`) {
+        // Start beep at beginning of run phase
+        if (phaseElapsed < 0.15 && lastBeepRef.current !== `${phase.id}-start`) {
           audioEngine.playStartSound();
           lastBeepRef.current = `${phase.id}-start`;
         }
 
+        // Turn beep at midpoint (20m mark)
         const halfTime = phase.duration / 2;
         if (
-          phaseElapsed >= halfTime &&
-          phaseElapsed < halfTime + 0.2 &&
+          phaseElapsed >= halfTime - 0.05 &&
+          phaseElapsed < halfTime + 0.15 &&
           lastBeepRef.current !== `${phase.id}-turn`
         ) {
           audioEngine.playTurnSound();
           lastBeepRef.current = `${phase.id}-turn`;
         }
       } else if (phase.type === "RECOVERY") {
-        if (phaseElapsed < 0.2 && lastBeepRef.current !== `${phase.id}-start`) {
+        // Beep at start of recovery phase
+        if (phaseElapsed < 0.15 && lastBeepRef.current !== `${phase.id}-start`) {
           audioEngine.playTurnSound();
           lastBeepRef.current = `${phase.id}-start`;
-        }
-
-        if (timeLeft < 3.1 && timeLeft > 2.9) {
-          audioEngine.playTickSound();
-          lastBeepRef.current = key;
-        }
-        if (timeLeft < 2.1 && timeLeft > 1.9) {
-          audioEngine.playTickSound();
-          lastBeepRef.current = key;
-        }
-        if (timeLeft < 1.1 && timeLeft > 0.9) {
-          audioEngine.playTickSound();
-          lastBeepRef.current = key;
         }
       }
     },
