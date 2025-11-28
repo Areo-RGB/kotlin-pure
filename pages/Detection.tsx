@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Ui/Button';
-import { Play, RotateCcw, History, ChevronDown, ChevronUp, Trash2, Volume2, VolumeX, Settings, Timer, Zap } from 'lucide-react';
+import { Play, RotateCcw, History, ChevronDown, ChevronUp, Trash2, Volume2, VolumeX, Settings, Timer, Zap, Cpu, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MotionTripwire } from '../components/MotionTripwire';
 import { Header } from '../components/Ui/Header';
@@ -39,6 +39,7 @@ const Detection: React.FC = () => {
   const [threshold, setThreshold] = useState(30);
   const [tripwireWidth, setTripwireWidth] = useState(10);
   const [tripwireHeight, setTripwireHeight] = useState(100);
+  const [useWebGL, setUseWebGL] = useState(true); // GPU acceleration
 
   // Animation loop
   React.useEffect(() => {
@@ -188,6 +189,7 @@ const Detection: React.FC = () => {
           tripwireWidth={tripwireWidth}
           tripwireHeight={tripwireHeight}
           enableTorch={torchEnabled}
+          useWebGL={useWebGL}
         />
         
         {/* Center Overlay Text */}
@@ -274,6 +276,25 @@ const Detection: React.FC = () => {
                 onChange={(e) => setThreshold(Number(e.target.value))}
                 className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
             />
+        </div>
+
+        {/* WebGL Toggle */}
+        <div className="border-t border-gray-800 pt-4">
+            <button
+                onClick={() => setUseWebGL(!useWebGL)}
+                className="w-full flex items-center justify-between py-3 px-4 rounded-xl border transition-colors bg-gray-800/50 border-gray-700 hover:bg-gray-700/50"
+            >
+                <div className="flex items-center gap-3">
+                    {useWebGL ? <Sparkles size={18} className="text-emerald-400" /> : <Cpu size={18} className="text-gray-400" />}
+                    <div className="text-left">
+                        <div className="text-xs font-bold text-gray-300 uppercase tracking-wider">WebGL Acceleration</div>
+                        <div className="text-[10px] text-gray-500">{useWebGL ? 'GPU-accelerated (faster)' : 'CPU fallback'}</div>
+                    </div>
+                </div>
+                <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${useWebGL ? 'bg-emerald-500' : 'bg-gray-600'}`}>
+                    <div className={`w-4 h-4 rounded-full bg-white transition-transform ${useWebGL ? 'translate-x-6' : 'translate-x-0'}`} />
+                </div>
+            </button>
         </div>
       </SettingsDrawer>
 
