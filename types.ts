@@ -1,6 +1,10 @@
-
-
-export type MotionGateRole = 'START' | 'FINISH' | 'SPLIT' | 'DISPLAY' | 'UNASSIGNED' | 'GAME';
+export type MotionGateRole =
+  | "START"
+  | "FINISH"
+  | "SPLIT"
+  | "DISPLAY"
+  | "UNASSIGNED"
+  | "GAME";
 
 export interface MotionGateDevice {
   id: string;
@@ -17,10 +21,10 @@ export interface MotionGateRun {
 }
 
 export interface MotionGateSession {
-  status: 'IDLE' | 'RUNNING' | 'FINISHED';
+  status: "IDLE" | "RUNNING" | "FINISHED";
   startTime: number | null;
   finishTime: number | null;
-  runId: string; 
+  runId: string;
   devices?: Record<string, MotionGateDevice>;
   history?: Record<string, MotionGateRun>;
 }

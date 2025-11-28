@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { initMotionGateSession } from '../../services/firebase';
-import { LobbyScreen } from '../../components/Ui/LobbyScreen';
-import { Wifi } from 'lucide-react';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { initMotionGateSession } from "../../services/firebase";
+import { LobbyScreen } from "../../components/Ui/LobbyScreen";
+import { Wifi } from "lucide-react";
 
 const MotionGateWebRTCLobby: React.FC = () => {
-  const [lobbyId, setLobbyId] = useState('');
+  const [lobbyId, setLobbyId] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const initWithTimeout = (id: string) => {
-    const timeout = new Promise<void>((_, reject) => 
+    const timeout = new Promise<void>((_, reject) =>
       setTimeout(() => reject(new Error("Connection timeout")), 2000)
     );
     return Promise.race([initMotionGateSession(id), timeout]);
@@ -22,7 +22,10 @@ const MotionGateWebRTCLobby: React.FC = () => {
     try {
       await initWithTimeout(lobbyId);
     } catch (error) {
-      console.warn("Could not verify lobby (likely offline). Proceeding locally.", error);
+      console.warn(
+        "Could not verify lobby (likely offline). Proceeding locally.",
+        error
+      );
     }
     setLoading(false);
     navigate(`/motion-gate-webrtc/game/${lobbyId}`);
@@ -48,7 +51,7 @@ const MotionGateWebRTCLobby: React.FC = () => {
       setLobbyId={setLobbyId}
       onJoin={handleEnter}
       onCreate={handleCreateSession}
-      onBack={() => navigate('/tools')}
+      onBack={() => navigate("/tools")}
       loading={loading}
       color="cyan"
       description="Uses P2P WebRTC for low-latency signaling."
