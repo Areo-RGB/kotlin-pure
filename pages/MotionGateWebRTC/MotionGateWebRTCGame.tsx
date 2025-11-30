@@ -301,14 +301,14 @@ const MotionGateWebRTCGame: React.FC = () => {
       lastSeen: getServerTime(),
     };
 
-    set(userRef, userPayload).catch(() => {});
+    set(userRef, userPayload).catch(() => { });
     onDisconnect(userRef)
       .remove()
-      .catch(() => {});
+      .catch(() => { });
 
     // Heartbeat
     const hbInterval = setInterval(() => {
-      update(userRef, { lastSeen: getServerTime() }).catch(() => {});
+      update(userRef, { lastSeen: getServerTime() }).catch(() => { });
     }, 4000);
     // @ts-ignore
     firebaseRefs.current.push(() => clearInterval(hbInterval));
@@ -343,7 +343,7 @@ const MotionGateWebRTCGame: React.FC = () => {
             db,
             `lobbies/${lobbyId}/webrtc/signals/${deviceId}/${snapshot.key}`
           )
-        ).catch(() => {});
+        ).catch(() => { });
       }
     });
     firebaseRefs.current.push(unsubSignals);
@@ -356,7 +356,7 @@ const MotionGateWebRTCGame: React.FC = () => {
       db,
       `lobbies/${lobbyId}/webrtc/participants/${deviceId}`
     );
-    remove(userRef).catch(() => {});
+    remove(userRef).catch(() => { });
   };
 
   // --- WebRTC Core (Abstracted Transport) ---
@@ -612,6 +612,8 @@ const MotionGateWebRTCGame: React.FC = () => {
       setDisplayTime(0);
       setSplitTimes([]);
       setFinishTime(null);
+    } else if (msg.type === "ARM_STATE") {
+      setIsLocalArmed(msg.payload.armed);
     }
   };
 
@@ -630,6 +632,8 @@ const MotionGateWebRTCGame: React.FC = () => {
       setIsLocalArmed(false);
       // Broadcast Start
       broadcast({ type: "START", timestamp: now, senderId: deviceId });
+      // Broadcast Disarm
+      broadcast({ type: "ARM_STATE", timestamp: now, senderId: deviceId, payload: { armed: false } });
       playBeep(1200);
     } else if (myRole === "SPLIT" && gameState === "RUNNING") {
       const duration = now - (startTime || 0);
@@ -698,7 +702,7 @@ const MotionGateWebRTCGame: React.FC = () => {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.2);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // --- Render Loops ---
@@ -753,9 +757,8 @@ const MotionGateWebRTCGame: React.FC = () => {
             onClick={() => setShowSettings(true)}
           >
             <span
-              className={`w-2 h-2 rounded-full ${
-                isConnectedToSignaling ? "bg-emerald-500" : "bg-red-500"
-              }`}
+              className={`w-2 h-2 rounded-full ${isConnectedToSignaling ? "bg-emerald-500" : "bg-red-500"
+                }`}
             />
             {isWssMode ? (
               <Server size={12} className="text-blue-400" />
@@ -771,9 +774,8 @@ const MotionGateWebRTCGame: React.FC = () => {
         <Button
           variant="icon"
           onClick={() => setShowSettings(!showSettings)}
-          className={`pointer-events-auto backdrop-blur-md border-gray-600 transition-colors ${
-            showSettings ? "bg-indigo-600 text-white" : "bg-black/60 text-white"
-          }`}
+          className={`pointer-events-auto backdrop-blur-md border-gray-600 transition-colors ${showSettings ? "bg-indigo-600 text-white" : "bg-black/60 text-white"
+            }`}
         >
           <Settings size={20} />
         </Button>
@@ -781,17 +783,15 @@ const MotionGateWebRTCGame: React.FC = () => {
 
       {/* Main Game View */}
       <div
-        className={`absolute inset-0 transition-opacity duration-500 ${
-          isSetupMode ? "opacity-10 pointer-events-none" : "opacity-100"
-        }`}
+        className={`absolute inset-0 transition-opacity duration-500 ${isSetupMode ? "opacity-10 pointer-events-none" : "opacity-100"
+          }`}
       >
         {myRole === "DISPLAY" ? (
           <div className="flex flex-col items-center justify-center h-full bg-gray-900 px-4">
             {/* Main Timer */}
             <div
-              className={`text-[15vw] sm:text-[20vw] font-mono font-bold tabular-nums tracking-tighter leading-none ${
-                gameState === "RUNNING" ? "text-white" : "text-gray-500"
-              }`}
+              className={`text-[15vw] sm:text-[20vw] font-mono font-bold tabular-nums tracking-tighter leading-none ${gameState === "RUNNING" ? "text-white" : "text-gray-500"
+                }`}
             >
               {(displayTime / 1000).toFixed(2)}s
             </div>
@@ -872,8 +872,8 @@ const MotionGateWebRTCGame: React.FC = () => {
                 myRole === "START"
                   ? "green"
                   : myRole === "SPLIT"
-                  ? "blue"
-                  : "red"
+                    ? "blue"
+                    : "red"
               }
               blurRadius={blurRadius}
               cooldownMs={cooldownMs}
@@ -899,19 +899,17 @@ const MotionGateWebRTCGame: React.FC = () => {
             <div className="w-full max-w-md space-y-6">
               {/* Connection Status Card */}
               <div
-                className={`bg-gray-900 rounded-xl border p-4 flex items-center justify-between ${
-                  isConnectedToSignaling
-                    ? "border-emerald-500/50"
-                    : "border-red-500/50"
-                }`}
+                className={`bg-gray-900 rounded-xl border p-4 flex items-center justify-between ${isConnectedToSignaling
+                  ? "border-emerald-500/50"
+                  : "border-red-500/50"
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      isConnectedToSignaling
-                        ? "bg-emerald-500/10 text-emerald-400"
-                        : "bg-red-500/10 text-red-400"
-                    }`}
+                    className={`p-2 rounded-lg ${isConnectedToSignaling
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-red-500/10 text-red-400"
+                      }`}
                   >
                     {isConnectedToSignaling ? (
                       isWssMode ? (
@@ -1082,12 +1080,17 @@ const MotionGateWebRTCGame: React.FC = () => {
           </Button>
 
           <button
-            onClick={() => setIsLocalArmed(!isLocalArmed)}
-            className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${
-              isLocalArmed
-                ? "bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse"
-                : "bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105"
-            }`}
+            onClick={() => {
+              const newState = !isLocalArmed;
+              setIsLocalArmed(newState);
+              if (myRole === 'START') {
+                broadcast({ type: "ARM_STATE", timestamp: Date.now(), senderId: deviceId, payload: { armed: newState } });
+              }
+            }}
+            className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${isLocalArmed
+              ? "bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse"
+              : "bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105"
+              }`}
           >
             {isLocalArmed ? (
               <Square size={24} fill="currentColor" />

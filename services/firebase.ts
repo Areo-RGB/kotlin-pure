@@ -55,6 +55,7 @@ export const initMotionGateSession = async (lobbyId: string) => {
         finishTime: null,
         runId: Date.now().toString(),
         devices: {},
+        systemArmed: false,
       };
     }
 
@@ -67,6 +68,7 @@ export const initMotionGateSession = async (lobbyId: string) => {
         startTime: null,
         finishTime: null,
         runId: current.runId || Date.now().toString(),
+        systemArmed: current.systemArmed || false,
       };
     }
 
@@ -186,6 +188,11 @@ export const resetMotionGate = async (lobbyId: string) => {
 export const clearMotionGateHistory = async (lobbyId: string) => {
   const historyRef = ref(db, `lobbies/${lobbyId}/motionGate/history`);
   await remove(historyRef);
+};
+
+export const setSystemArmed = async (lobbyId: string, armed: boolean) => {
+  const armedRef = ref(db, `lobbies/${lobbyId}/motionGate/systemArmed`);
+  await set(armedRef, armed);
 };
 
 export { db, onValue };

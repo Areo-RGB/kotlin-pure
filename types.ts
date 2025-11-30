@@ -27,4 +27,5 @@ export interface MotionGateSession {
   runId: string;
   devices?: Record<string, MotionGateDevice>;
   history?: Record<string, MotionGateRun>;
+  systemArmed?: boolean;
 }
