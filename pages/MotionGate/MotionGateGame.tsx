@@ -8,6 +8,7 @@ import {
   getServerTime,
   triggerMotionStart,
   triggerMotionFinish,
+  triggerMotionSplit,
   resetMotionGate,
   registerDevice,
   heartbeatDevice,
@@ -165,16 +166,17 @@ const MotionGateGame: React.FC = () => {
         triggerMotionStart(lobbyId, nowServerTime);
         setIsLocalArmed(false); // Only disarm locally
       }
+    } else if (role === 'SPLIT') {
+      if (session.status === 'RUNNING') {
+        // Record split time (implementation needed in firebase.ts)
+        // For now, let's just log it or add a function to firebase.ts
+        // Actually, we need a triggerMotionSplit function
+        triggerMotionSplit(lobbyId, nowServerTime, deviceName);
+        setIsLocalArmed(false);
+      }
     } else if (role === 'FINISH') {
       if (session.status === 'RUNNING') {
         triggerMotionFinish(lobbyId, nowServerTime);
-        // We don't necessarily disarm system on finish, or maybe we do? 
-        // Usually finish gate just disarms itself locally or system disarms?
-        // Let's keep local disarm for finish gate for now, or if it's system armed, it should probably stay armed until reset?
-        // Actually, if system armed, we probably want to disarm system to prevent double triggers?
-        // For now, let's just disarm local, as FINISH usually doesn't control system arm state unless it's the master.
-        // But wait, if START controls arming, then FINISH triggering shouldn't disarm START?
-        // Let's stick to local disarm for FINISH for now, unless we want FINISH to also disarm system.
         setIsLocalArmed(false);
       }
     }

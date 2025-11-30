@@ -176,6 +176,31 @@ export const triggerMotionFinish = async (
   });
 };
 
+export const triggerMotionSplit = async (
+  lobbyId: string,
+  timestamp: number,
+  deviceName: string
+) => {
+  const mgRef = getMotionGateRef(lobbyId);
+  await runTransaction(mgRef, (current) => {
+    if (current && current.status === "RUNNING") {
+      const splits = current.splits || [];
+      return {
+        ...current,
+        splits: [
+          ...splits,
+          {
+            timestamp,
+            duration: timestamp - current.startTime,
+            deviceName,
+          },
+        ],
+      };
+    }
+    return current;
+  });
+};
+
 export const resetMotionGate = async (lobbyId: string) => {
   const mgRef = getMotionGateRef(lobbyId);
   await update(mgRef, {

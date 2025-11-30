@@ -48,8 +48,17 @@ interface WebRTCPeer {
   dataChannelState: RTCDataChannelState;
   isManual?: boolean; // True if connected via QR/Offline
   cameraFacing?: 'user' | 'environment';
+  distance?: number; // Optional distance in meters
 }
 
+interface SplitTime {
+  timestamp: number;
+  duration: number;
+  deviceId: string;
+  deviceName: string;
+  speed?: number; // Speed in km/h
+  distance?: number; // Distance in meters
+}
 // --- QR Constants ---
 const CHUNK_SIZE = 1500;
 const ROTATION_INTERVAL = 700;
@@ -96,9 +105,12 @@ const MotionGateWebRTCGame: React.FC = () => {
       duration: number;
       deviceId: string;
       deviceName: string;
+      distance?: number;
+      speed?: number;
     }[]
   >([]);
   const [finishTime, setFinishTime] = useState<number | null>(null);
+  const [finishSpeed, setFinishSpeed] = useState<number | undefined>(undefined);
   const [history, setHistory] = useState<
     {
       id: number;
@@ -119,6 +131,20 @@ const MotionGateWebRTCGame: React.FC = () => {
   // Camera Selection
   const [localCameraFacing, setLocalCameraFacing] = useState<'user' | 'environment'>('environment');
 
+  // Derived State for Authority
+  const hasDisplayPeer = useMemo(() => Object.values(peers).some(p => p.role === 'DISPLAY'), [peers]);
+  const isTimeAuthority = myRole === 'DISPLAY' || (myRole === 'START' && !hasDisplayPeer);
+  const wasTimeAuthority = useRef(isTimeAuthority);
+
+  // Auto-sync latency when becoming authority
+  useEffect(() => {
+    if (isTimeAuthority && !wasTimeAuthority.current) {
+      addLog("Became Time Authority. Syncing latencies...");
+      Object.keys(dataChannels.current).forEach(id => measureLatency(id));
+    }
+    wasTimeAuthority.current = isTimeAuthority;
+  }, [isTimeAuthority]);
+
   // Latency Compensation
   const [latencies, setLatencies] = useState<Record<string, number>>({});
   const pingStartTimes = useRef<Record<string, number>>({});
@@ -131,6 +157,7 @@ const MotionGateWebRTCGame: React.FC = () => {
     startTime,
     isLocalArmed,
     splitTimes,
+    peers,
   });
   useEffect(() => {
     stateRef.current = {
@@ -139,8 +166,9 @@ const MotionGateWebRTCGame: React.FC = () => {
       startTime,
       isLocalArmed,
       splitTimes,
+      peers,
     };
-  }, [myRole, gameState, startTime, isLocalArmed, splitTimes]);
+  }, [myRole, gameState, startTime, isLocalArmed, splitTimes, peers]);
 
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
   const dataChannels = useRef<Record<string, RTCDataChannel>>({});
@@ -478,6 +506,11 @@ const MotionGateWebRTCGame: React.FC = () => {
           payload: { armed: true }
         });
       }
+
+      // Auto-trigger latency sync if we are Host OR Authority
+      if (isHost || isTimeAuthority) {
+        measureLatency(peerId);
+      }
     };
 
     channel.onmessage = (event) => {
@@ -497,6 +530,10 @@ const MotionGateWebRTCGame: React.FC = () => {
     isManual: boolean
   ) => {
     setPeers((prev) => {
+      // Check if this update changes authority status (e.g. Display joined/left)
+      // We can't easily check 'next' state here for side effects, 
+      // so we rely on the useEffect [peers] dependency to trigger the sync.
+
       if (connState === "closed") {
         const next = { ...prev };
         delete next[id];
@@ -522,7 +559,7 @@ const MotionGateWebRTCGame: React.FC = () => {
   const initiateConnection = async (targetId: string, isManual: boolean) => {
     addLog(`Initiating connection to ${targetId.substr(0, 4)}...`);
     const pc = createPC(targetId, isManual);
-    const dc = pc.createDataChannel("motion-gate");
+    const dc = pc.createDataChannel("motion-gate", { ordered: false });
     setupDataChannel(targetId, dc, isManual);
 
     pc.onicecandidate = (event) => {
@@ -644,6 +681,26 @@ const MotionGateWebRTCGame: React.FC = () => {
         const adjustedTime = arrivalTime - latency;
 
         const duration = adjustedTime - (stateRef.current.startTime || 0);
+
+        // Calculate Speed
+        let speed: number | undefined;
+        const currentDist = stateRef.current.peers[msg.senderId]?.distance;
+
+        if (currentDist !== undefined) {
+          // Find previous distance and time
+          const prevSplit = stateRef.current.splitTimes[stateRef.current.splitTimes.length - 1];
+          const prevDist = prevSplit?.distance || 0;
+          const prevTime = prevSplit?.duration || 0;
+
+          const distDelta = currentDist - prevDist;
+          const timeDelta = (duration - prevTime) / 1000; // seconds
+
+          if (timeDelta > 0 && distDelta > 0) {
+            const mps = distDelta / timeDelta;
+            speed = mps * 3.6; // km/h
+          }
+        }
+
         setSplitTimes((prev) => [
           ...prev,
           {
@@ -651,6 +708,8 @@ const MotionGateWebRTCGame: React.FC = () => {
             duration,
             deviceId: msg.senderId,
             deviceName: msg.deviceName || `Device ${msg.senderId.substr(0, 3)}`,
+            distance: currentDist,
+            speed
           },
         ]);
         setFlash(true);
@@ -666,6 +725,25 @@ const MotionGateWebRTCGame: React.FC = () => {
         const duration = adjustedTime - (stateRef.current.startTime || 0);
         setDisplayTime(duration);
         setFinishTime(adjustedTime);
+
+        // Calculate Final Speed
+        let speed: number | undefined;
+        const currentDist = stateRef.current.peers[msg.senderId]?.distance;
+
+        if (currentDist !== undefined) {
+          const prevSplit = stateRef.current.splitTimes[stateRef.current.splitTimes.length - 1];
+          const prevDist = prevSplit?.distance || 0;
+          const prevTime = prevSplit?.duration || 0;
+
+          const distDelta = currentDist - prevDist;
+          const timeDelta = (duration - prevTime) / 1000;
+
+          if (timeDelta > 0 && distDelta > 0) {
+            const mps = distDelta / timeDelta;
+            speed = mps * 3.6;
+            setFinishSpeed(speed);
+          }
+        }
         setHistory((prev) => [
           {
             id: Date.now(),
@@ -802,7 +880,27 @@ const MotionGateWebRTCGame: React.FC = () => {
     setDisplayTime(0);
     setSplitTimes([]);
     setFinishTime(null);
+    setFinishSpeed(undefined);
     broadcast({ type: "RESET", timestamp: Date.now(), senderId: deviceId });
+  };
+
+  const measureLatency = (targetId: string) => {
+    // Clear previous samples for this target
+    latencySamples.current[targetId] = [];
+    addLog(`Starting 5s latency sync with ${targetId.substr(0, 3)}...`);
+
+    // Send pings every 500ms for 5 seconds
+    let count = 0;
+    const interval = setInterval(() => {
+      count++;
+      if (count > 10) {
+        clearInterval(interval);
+        addLog(`Latency sync complete for ${targetId.substr(0, 3)}.`);
+        return;
+      }
+      pingStartTimes.current[targetId] = Date.now();
+      sendToPeer(targetId, { type: "PING", timestamp: Date.now(), senderId: deviceId });
+    }, 500);
   };
 
   const playBeep = (freq = 1000) => {
@@ -938,16 +1036,23 @@ const MotionGateWebRTCGame: React.FC = () => {
                       <span className="font-mono text-blue-300 text-lg">
                         {(split.duration / 1000).toFixed(2)}s
                       </span>
-                      {idx > 0 && (
-                        <span className="text-blue-500/70 text-xs ml-2">
-                          (+
-                          {(
-                            (split.duration - splitTimes[idx - 1].duration) /
-                            1000
-                          ).toFixed(2)}
-                          s)
-                        </span>
-                      )}
+                      <div className="flex flex-col items-end">
+                        {idx > 0 && (
+                          <span className="text-blue-500/70 text-xs">
+                            (+
+                            {(
+                              (split.duration - splitTimes[idx - 1].duration) /
+                              1000
+                            ).toFixed(2)}
+                            s)
+                          </span>
+                        )}
+                        {split.speed && (
+                          <span className="text-yellow-400 text-xs font-mono">
+                            {split.speed.toFixed(2)} km/h
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -962,17 +1067,24 @@ const MotionGateWebRTCGame: React.FC = () => {
                       <span className="font-mono text-red-300 text-lg">
                         {(displayTime / 1000).toFixed(2)}s
                       </span>
-                      {splitTimes.length > 0 && (
-                        <span className="text-red-500/70 text-xs ml-2">
-                          (+
-                          {(
-                            (displayTime -
-                              splitTimes[splitTimes.length - 1].duration) /
-                            1000
-                          ).toFixed(2)}
-                          s)
-                        </span>
-                      )}
+                      <div className="flex flex-col items-end">
+                        {splitTimes.length > 0 && (
+                          <span className="text-red-500/70 text-xs">
+                            (+
+                            {(
+                              (displayTime -
+                                splitTimes[splitTimes.length - 1].duration) /
+                              1000
+                            ).toFixed(2)}
+                            s)
+                          </span>
+                        )}
+                        {finishSpeed && (
+                          <span className="text-yellow-400 text-xs font-mono">
+                            {finishSpeed.toFixed(2)} km/h
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1075,24 +1187,9 @@ const MotionGateWebRTCGame: React.FC = () => {
                   {isHost && (
                     <button
                       onClick={() => {
-                        // Clear previous samples
-                        latencySamples.current = {};
-                        addLog("Starting 5s latency sync...");
-
-                        // Send pings every 500ms for 5 seconds
-                        let count = 0;
-                        const interval = setInterval(() => {
-                          count++;
-                          if (count > 10) {
-                            clearInterval(interval);
-                            addLog("Latency sync complete.");
-                            return;
-                          }
-                          Object.keys(dataChannels.current).forEach(id => {
-                            pingStartTimes.current[id] = Date.now();
-                            sendToPeer(id, { type: "PING", timestamp: Date.now(), senderId: deviceId });
-                          });
-                        }, 500);
+                        Object.keys(dataChannels.current).forEach(id => {
+                          measureLatency(id);
+                        });
                       }}
                       className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded ml-2"
                     >
@@ -1182,31 +1279,52 @@ const MotionGateWebRTCGame: React.FC = () => {
                       </div>
 
                       {isHost ? (
-                        <select
-                          value={peer.role}
-                          onChange={(e) => {
-                            const newRole = e.target.value as MotionGateRole;
-                            // Send assignment to peer
-                            sendToPeer(peer.id, {
-                              type: "ROLE_ASSIGNMENT",
-                              timestamp: Date.now(),
-                              senderId: deviceId,
-                              payload: { role: newRole },
-                            });
-                            // Optimistically update local view
-                            setPeers((prev) => ({
-                              ...prev,
-                              [peer.id]: { ...prev[peer.id], role: newRole },
-                            }));
-                          }}
-                          className="bg-gray-800 text-xs font-bold uppercase p-2 rounded border border-gray-700 outline-none focus:border-indigo-500"
-                        >
-                          <option value="UNASSIGNED">Unassigned</option>
-                          <option value="START">Start Gate</option>
-                          <option value="SPLIT">Split Gate</option>
-                          <option value="FINISH">Finish Gate</option>
-                          <option value="DISPLAY">Display</option>
-                        </select>
+                        <div className="flex flex-col gap-2 items-end">
+                          <select
+                            value={peer.role}
+                            onChange={(e) => {
+                              const newRole = e.target.value as MotionGateRole;
+                              // Send assignment to peer
+                              sendToPeer(peer.id, {
+                                type: "ROLE_ASSIGNMENT",
+                                timestamp: Date.now(),
+                                senderId: deviceId,
+                                payload: { role: newRole },
+                              });
+                              // Optimistically update local view
+                              setPeers((prev) => ({
+                                ...prev,
+                                [peer.id]: { ...prev[peer.id], role: newRole },
+                              }));
+                            }}
+                            className="bg-gray-800 text-xs font-bold uppercase p-2 rounded border border-gray-700 outline-none focus:border-indigo-500"
+                          >
+                            <option value="UNASSIGNED">Unassigned</option>
+                            <option value="START">Start Gate</option>
+                            <option value="SPLIT">Split Gate</option>
+                            <option value="FINISH">Finish Gate</option>
+                            <option value="DISPLAY">Display</option>
+                          </select>
+                          {(peer.role === 'SPLIT' || peer.role === 'FINISH') && (
+                            <div className="flex items-center gap-1 bg-gray-800 rounded border border-gray-700 px-2 py-1">
+                              <span className="text-[10px] text-gray-500">Dist:</span>
+                              <input
+                                type="number"
+                                className="w-12 bg-transparent text-xs text-white outline-none text-right"
+                                placeholder="0"
+                                value={peer.distance || ''}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  setPeers(prev => ({
+                                    ...prev,
+                                    [peer.id]: { ...prev[peer.id], distance: isNaN(val) ? undefined : val }
+                                  }));
+                                }}
+                              />
+                              <span className="text-[10px] text-gray-500">m</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="text-xs font-bold uppercase bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">
                           {peer.role}
