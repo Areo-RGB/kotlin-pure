@@ -119,6 +119,11 @@ const MotionGateWebRTCGame: React.FC = () => {
   // Camera Selection
   const [localCameraFacing, setLocalCameraFacing] = useState<'user' | 'environment'>('environment');
 
+  // Latency Compensation
+  const [latencies, setLatencies] = useState<Record<string, number>>({});
+  const pingStartTimes = useRef<Record<string, number>>({});
+  const latencySamples = useRef<Record<string, number[]>>({});
+
   // --- Refs ---
   const stateRef = useRef({
     myRole,
@@ -611,7 +616,22 @@ const MotionGateWebRTCGame: React.FC = () => {
       });
     } else if (msg.type === "START") {
       setGameState("RUNNING");
-      setStartTime(msg.timestamp);
+      // Host Arrival Time Logic:
+      // If we are Host (or anyone receiving), we use OUR clock - latency
+      // But wait, if we are a client receiving START from Host (who relayed it?), 
+      // ideally everyone uses Host's clock.
+      // For simplicity in this "Host Arrival" model:
+      // The HOST determines the official time.
+      // If I am the HOST, I calculate start = Now - Latency.
+      // If I am a CLIENT, I just accept the START message.
+      // However, usually clients just display what they are told.
+      // Let's assume this logic runs on the HOST mostly for recording times.
+
+      const arrivalTime = Date.now();
+      const latency = latencies[msg.senderId] || 0;
+      const adjustedTime = arrivalTime - latency;
+
+      setStartTime(adjustedTime);
       setDisplayTime(0);
       setSplitTimes([]);
       setFinishTime(null);
@@ -619,11 +639,15 @@ const MotionGateWebRTCGame: React.FC = () => {
       setTimeout(() => setFlash(false), 200);
     } else if (msg.type === "SPLIT") {
       if (stateRef.current.gameState === "RUNNING") {
-        const duration = msg.timestamp - (stateRef.current.startTime || 0);
+        const arrivalTime = Date.now();
+        const latency = latencies[msg.senderId] || 0;
+        const adjustedTime = arrivalTime - latency;
+
+        const duration = adjustedTime - (stateRef.current.startTime || 0);
         setSplitTimes((prev) => [
           ...prev,
           {
-            timestamp: msg.timestamp,
+            timestamp: adjustedTime,
             duration,
             deviceId: msg.senderId,
             deviceName: msg.deviceName || `Device ${msg.senderId.substr(0, 3)}`,
@@ -635,9 +659,13 @@ const MotionGateWebRTCGame: React.FC = () => {
     } else if (msg.type === "FINISH") {
       if (stateRef.current.gameState === "RUNNING") {
         setGameState("FINISHED");
-        const duration = msg.timestamp - (stateRef.current.startTime || 0);
+        const arrivalTime = Date.now();
+        const latency = latencies[msg.senderId] || 0;
+        const adjustedTime = arrivalTime - latency;
+
+        const duration = adjustedTime - (stateRef.current.startTime || 0);
         setDisplayTime(duration);
-        setFinishTime(msg.timestamp);
+        setFinishTime(adjustedTime);
         setHistory((prev) => [
           {
             id: Date.now(),
@@ -675,6 +703,35 @@ const MotionGateWebRTCGame: React.FC = () => {
         ...prev,
         [msg.senderId]: { ...prev[msg.senderId], cameraFacing: msg.payload.facingMode },
       }));
+    } else if (msg.type === "PING") {
+      // Respond immediately with PONG, echoing the timestamp
+      sendToPeer(msg.senderId, {
+        type: "PONG",
+        timestamp: msg.timestamp,
+        senderId: deviceId
+      });
+    } else if (msg.type === "PONG") {
+      // Calculate RTT
+      const now = Date.now();
+      const sentTime = pingStartTimes.current[msg.senderId];
+      if (sentTime) {
+        const rtt = now - sentTime;
+        const oneWay = Math.floor(rtt / 2);
+
+        // Add to samples
+        if (!latencySamples.current[msg.senderId]) {
+          latencySamples.current[msg.senderId] = [];
+        }
+        latencySamples.current[msg.senderId].push(oneWay);
+
+        // Calculate average
+        const samples = latencySamples.current[msg.senderId];
+        const sum = samples.reduce((a, b) => a + b, 0);
+        const avg = Math.floor(sum / samples.length);
+
+        setLatencies(prev => ({ ...prev, [msg.senderId]: avg }));
+        addLog(`Latency to ${msg.senderId.substr(0, 3)}: ${oneWay}ms (Avg: ${avg}ms, n=${samples.length})`);
+      }
     }
   };
 
@@ -1015,6 +1072,33 @@ const MotionGateWebRTCGame: React.FC = () => {
                   <span className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">
                     {Object.keys(peers).length + 1} Active
                   </span>
+                  {isHost && (
+                    <button
+                      onClick={() => {
+                        // Clear previous samples
+                        latencySamples.current = {};
+                        addLog("Starting 5s latency sync...");
+
+                        // Send pings every 500ms for 5 seconds
+                        let count = 0;
+                        const interval = setInterval(() => {
+                          count++;
+                          if (count > 10) {
+                            clearInterval(interval);
+                            addLog("Latency sync complete.");
+                            return;
+                          }
+                          Object.keys(dataChannels.current).forEach(id => {
+                            pingStartTimes.current[id] = Date.now();
+                            sendToPeer(id, { type: "PING", timestamp: Date.now(), senderId: deviceId });
+                          });
+                        }, 500);
+                      }}
+                      className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded ml-2"
+                    >
+                      Sync Latency (5s)
+                    </button>
+                  )}
                 </div>
                 <div className="divide-y divide-gray-800">
                   {/* Self */}
@@ -1088,6 +1172,11 @@ const MotionGateWebRTCGame: React.FC = () => {
                           )}
                           {peer.isManual && (
                             <span className="text-gray-600">(QR)</span>
+                          )}
+                          {latencies[peer.id] !== undefined && (
+                            <span className="text-gray-500 text-[10px] ml-1">
+                              ±{latencies[peer.id]}ms
+                            </span>
                           )}
                         </div>
                       </div>
