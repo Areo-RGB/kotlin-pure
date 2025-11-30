@@ -19,6 +19,8 @@ import {
 import { MotionGateSession, MotionGateDevice, MotionGateRole, MotionGateRun } from '../../types';
 import { Button } from '../../components/Ui/Button';
 import { ChevronLeft, RefreshCw, Settings, Smartphone, XCircle, ChevronDown, ChevronUp, Play, Square, History, Trash2, Sliders, Zap } from 'lucide-react';
+import { ref, set } from "firebase/database";
+import { db } from "../../services/firebase";
 import { MotionTripwire } from '../../components/MotionTripwire';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -57,6 +59,9 @@ const MotionGateGame: React.FC = () => {
   // Detection Settings
   const [blurRadius, setBlurRadius] = useState(4);
   const [cooldownMs, setCooldownMs] = useState(500);
+
+  // Camera Selection
+  const [localCameraFacing, setLocalCameraFacing] = useState<'user' | 'environment'>('environment');
 
   // --- Effects ---
 
@@ -110,12 +115,6 @@ const MotionGateGame: React.FC = () => {
     }
   }, [session.status, session.runId]);
 
-  // 4. Sync System Armed State
-  useEffect(() => {
-    if (session.systemArmed !== undefined) {
-      setIsLocalArmed(session.systemArmed);
-    }
-  }, [session.systemArmed]);
 
   // --- Helpers ---
 
@@ -136,6 +135,24 @@ const MotionGateGame: React.FC = () => {
   const myDevice = session.devices?.[deviceId] || { role: 'UNASSIGNED' };
   const role = myDevice.role;
 
+  // 4. Sync System Armed State
+  useEffect(() => {
+    if (session.systemArmed !== undefined) {
+      setIsLocalArmed(session.systemArmed);
+    }
+  }, [session.systemArmed]);
+
+
+  // 6. Sync local camera facing from session
+  useEffect(() => {
+    if (session.devices && deviceId) {
+      const myDevice = session.devices[deviceId];
+      if (myDevice && myDevice.cameraFacing && myDevice.cameraFacing !== localCameraFacing) {
+        setLocalCameraFacing(myDevice.cameraFacing);
+      }
+    }
+  }, [session.devices, deviceId, localCameraFacing]);
+
   // Determine View Mode
   const isSetupMode = role === 'UNASSIGNED' || showSettings;
 
@@ -146,7 +163,7 @@ const MotionGateGame: React.FC = () => {
     if (role === 'START') {
       if (session.status === 'IDLE' || session.status === 'FINISHED') {
         triggerMotionStart(lobbyId, nowServerTime);
-        setSystemArmed(lobbyId, false); // Auto disarm system after trigger
+        setIsLocalArmed(false); // Only disarm locally
       }
     } else if (role === 'FINISH') {
       if (session.status === 'RUNNING') {
@@ -289,6 +306,7 @@ const MotionGateGame: React.FC = () => {
               color={role === 'START' ? 'green' : 'red'}
               blurRadius={blurRadius}
               cooldownMs={cooldownMs}
+              facingMode={localCameraFacing}
             />
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
               <div
@@ -299,11 +317,11 @@ const MotionGateGame: React.FC = () => {
               </div>
               <div className="mt-2 px-4 py-2 bg-black/70 backdrop-blur-md rounded-full border border-white/10 shadow-xl">
                 <span className={`text-sm uppercase tracking-widest font-bold ${(role === 'FINISH' && session.status === 'RUNNING' && isLocalArmed) ? 'text-red-400' :
-                    (role === 'START' && session.status !== 'RUNNING' && isLocalArmed) ? 'text-emerald-400' :
-                      session.status === 'RUNNING' ? 'text-white animate-pulse' :
-                        'text-gray-300'
+                  (role === 'START' && session.status !== 'RUNNING' && isLocalArmed) ? 'text-emerald-400' :
+                    session.status === 'RUNNING' ? 'text-white animate-pulse' :
+                      'text-gray-300'
                   }`}>
-                  {role === 'START' ? 'START GATE' : role === 'FINISH' ? 'FINISH GATE' : ''}
+                  {role === 'START' ? 'START GATE' : 'FINISH GATE'}
                 </span>
 
                 {!isLocalArmed && !isSetupMode && (
@@ -355,6 +373,23 @@ const MotionGateGame: React.FC = () => {
                             {device.name}
                             {device.id === deviceId && <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-800/50">YOU</span>}
                           </div>
+
+                          <select
+                            value={device.cameraFacing || 'environment'}
+                            onChange={(e) => {
+                              const newFacing = e.target.value as 'user' | 'environment';
+                              // Update in Firebase
+                              if (lobbyId) {
+                                const deviceRef = ref(db, `motionGateSessions/${lobbyId}/devices/${device.id}/cameraFacing`);
+                                set(deviceRef, newFacing);
+                              }
+                            }}
+                            className="mt-1 w-full bg-gray-950 text-[10px] text-gray-400 border border-gray-800 rounded px-2 py-1 outline-none focus:border-indigo-500"
+                          >
+                            <option value="environment">Back Camera</option>
+                            <option value="user">Front Camera</option>
+                          </select>
+
                           <div className="text-xs text-gray-500 truncate">
                             {device.isOnline ? 'Online' : 'Last seen a while ago'}
                           </div>
@@ -531,8 +566,8 @@ const MotionGateGame: React.FC = () => {
                 }
               }}
               className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${isLocalArmed
-                  ? 'bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse'
-                  : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105'
+                ? 'bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105'
                 }`}
             >
               {isLocalArmed ? (

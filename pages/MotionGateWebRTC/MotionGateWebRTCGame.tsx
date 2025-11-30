@@ -47,6 +47,7 @@ interface WebRTCPeer {
   connectionState: RTCPeerConnectionState;
   dataChannelState: RTCDataChannelState;
   isManual?: boolean; // True if connected via QR/Offline
+  cameraFacing?: 'user' | 'environment';
 }
 
 // --- QR Constants ---
@@ -114,6 +115,9 @@ const MotionGateWebRTCGame: React.FC = () => {
   const [blurRadius, setBlurRadius] = useState(4);
   const [cooldownMs, setCooldownMs] = useState(500);
   const [logs, setLogs] = useState<string[]>([]);
+
+  // Camera Selection
+  const [localCameraFacing, setLocalCameraFacing] = useState<'user' | 'environment'>('environment');
 
   // --- Refs ---
   const stateRef = useRef({
@@ -201,10 +205,26 @@ const MotionGateWebRTCGame: React.FC = () => {
         if (msg.type === "peer-joined") {
           const targetId = msg.deviceId;
           addLog(`Peer detected on LAN: ${targetId}`);
-          if (targetId !== deviceId && !peerConnections.current[targetId]) {
-            // Tie-breaker: Lower ID initiates offer
-            if (deviceId < targetId) {
-              initiateConnection(targetId, false);
+          if (targetId !== deviceId) {
+            // Add to peers list immediately as Discovered
+            setPeers(prev => ({
+              ...prev,
+              [targetId]: {
+                id: targetId,
+                name: `Device ${targetId.substr(0, 3)}`,
+                role: 'UNASSIGNED',
+                lastSeen: Date.now(),
+                connectionState: 'new',
+                dataChannelState: 'closed',
+                isManual: false
+              }
+            }));
+
+            if (!peerConnections.current[targetId]) {
+              // Tie-breaker: Lower ID initiates offer
+              if (deviceId < targetId) {
+                initiateConnection(targetId, false);
+              }
             }
           }
         } else if (msg.type === "peer-left") {
@@ -232,6 +252,20 @@ const MotionGateWebRTCGame: React.FC = () => {
               p.deviceId !== deviceId &&
               !peerConnections.current[p.deviceId]
             ) {
+              // Add to peers list immediately
+              setPeers(prev => ({
+                ...prev,
+                [p.deviceId]: {
+                  id: p.deviceId,
+                  name: p.info?.name || `Device ${p.deviceId.substr(0, 3)}`,
+                  role: p.info?.role || 'UNASSIGNED',
+                  lastSeen: Date.now(),
+                  connectionState: 'new',
+                  dataChannelState: 'closed',
+                  isManual: false
+                }
+              }));
+
               if (deviceId < p.deviceId) {
                 initiateConnection(p.deviceId, false);
               }
@@ -403,7 +437,7 @@ const MotionGateWebRTCGame: React.FC = () => {
         pc.close();
         delete peerConnections.current[peerId];
         delete dataChannels.current[peerId];
-        updatePeerUI(peerId, "closed", "closed", isManual);
+        updatePeerUI(peerId, "failed", "closed", isManual);
       }
     };
 
@@ -429,6 +463,16 @@ const MotionGateWebRTCGame: React.FC = () => {
         senderId: deviceId,
         payload: { role: stateRef.current.myRole },
       });
+
+      // If we are START and armed, sync the arm state to the new peer
+      if (stateRef.current.myRole === 'START' && stateRef.current.isLocalArmed) {
+        sendToPeer(peerId, {
+          type: "ARM_STATE",
+          timestamp: Date.now(),
+          senderId: deviceId,
+          payload: { armed: true }
+        });
+      }
     };
 
     channel.onmessage = (event) => {
@@ -448,7 +492,7 @@ const MotionGateWebRTCGame: React.FC = () => {
     isManual: boolean
   ) => {
     setPeers((prev) => {
-      if (connState === "closed" || connState === "failed") {
+      if (connState === "closed") {
         const next = { ...prev };
         delete next[id];
         return next;
@@ -614,6 +658,23 @@ const MotionGateWebRTCGame: React.FC = () => {
       setFinishTime(null);
     } else if (msg.type === "ARM_STATE") {
       setIsLocalArmed(msg.payload.armed);
+    } else if (msg.type === "SET_CAMERA") {
+      // Remote command to change camera
+      const newFacing = msg.payload.facingMode;
+      setLocalCameraFacing(newFacing);
+      // Broadcast update so everyone knows
+      broadcast({
+        type: "CAMERA_UPDATE",
+        timestamp: Date.now(),
+        senderId: deviceId,
+        payload: { facingMode: newFacing }
+      });
+    } else if (msg.type === "CAMERA_UPDATE") {
+      // Peer changed their camera
+      setPeers((prev) => ({
+        ...prev,
+        [msg.senderId]: { ...prev[msg.senderId], cameraFacing: msg.payload.facingMode },
+      }));
     }
   };
 
@@ -632,8 +693,6 @@ const MotionGateWebRTCGame: React.FC = () => {
       setIsLocalArmed(false);
       // Broadcast Start
       broadcast({ type: "START", timestamp: now, senderId: deviceId });
-      // Broadcast Disarm
-      broadcast({ type: "ARM_STATE", timestamp: now, senderId: deviceId, payload: { armed: false } });
       playBeep(1200);
     } else if (myRole === "SPLIT" && gameState === "RUNNING") {
       const duration = now - (startTime || 0);
@@ -877,6 +936,7 @@ const MotionGateWebRTCGame: React.FC = () => {
               }
               blurRadius={blurRadius}
               cooldownMs={cooldownMs}
+              facingMode={localCameraFacing}
             />
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
               <div className="text-6xl font-mono font-bold tabular-nums tracking-tighter text-white drop-shadow-2xl">
@@ -965,6 +1025,23 @@ const MotionGateWebRTCGame: React.FC = () => {
                         YOU
                       </span>
                     </div>
+                    <select
+                      value={localCameraFacing || 'environment'}
+                      onChange={(e) => {
+                        const newFacing = e.target.value as 'user' | 'environment';
+                        setLocalCameraFacing(newFacing);
+                        broadcast({
+                          type: "CAMERA_UPDATE",
+                          timestamp: Date.now(),
+                          senderId: deviceId,
+                          payload: { facingMode: newFacing }
+                        });
+                      }}
+                      className="mt-1 w-full bg-gray-950 text-[10px] text-gray-400 border border-gray-800 rounded px-2 py-1 outline-none focus:border-indigo-500"
+                    >
+                      <option value="environment">Back Camera</option>
+                      <option value="user">Front Camera</option>
+                    </select>
                     <select
                       value={myRole}
                       onChange={(e) => {
@@ -1069,40 +1146,42 @@ const MotionGateWebRTCGame: React.FC = () => {
       </AnimatePresence>
 
       {/* Bottom Controls */}
-      {!isSetupMode && myRole !== "DISPLAY" && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 bg-gray-900/80 backdrop-blur border-t border-gray-800 pb-[env(safe-area-inset-bottom)] p-6 flex items-center justify-between">
-          <Button
-            variant="secondary"
-            onClick={handleReset}
-            className="rounded-full w-14 h-14 p-0"
-          >
-            <RefreshCw size={20} />
-          </Button>
+      {
+        !isSetupMode && myRole !== "DISPLAY" && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 bg-gray-900/80 backdrop-blur border-t border-gray-800 pb-[env(safe-area-inset-bottom)] p-6 flex items-center justify-between">
+            <Button
+              variant="secondary"
+              onClick={handleReset}
+              className="rounded-full w-14 h-14 p-0"
+            >
+              <RefreshCw size={20} />
+            </Button>
 
-          <button
-            onClick={() => {
-              const newState = !isLocalArmed;
-              setIsLocalArmed(newState);
-              if (myRole === 'START') {
-                broadcast({ type: "ARM_STATE", timestamp: Date.now(), senderId: deviceId, payload: { armed: newState } });
-              }
-            }}
-            className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${isLocalArmed
-              ? "bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse"
-              : "bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105"
-              }`}
-          >
-            {isLocalArmed ? (
-              <Square size={24} fill="currentColor" />
-            ) : (
-              <Play size={32} className="ml-1" fill="currentColor" />
-            )}
-          </button>
+            <button
+              onClick={() => {
+                const newState = !isLocalArmed;
+                setIsLocalArmed(newState);
+                if (myRole === 'START') {
+                  broadcast({ type: "ARM_STATE", timestamp: Date.now(), senderId: deviceId, payload: { armed: newState } });
+                }
+              }}
+              className={`h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${isLocalArmed
+                ? "bg-red-500/20 text-red-500 border-2 border-red-500 animate-pulse"
+                : "bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 hover:scale-105"
+                }`}
+            >
+              {isLocalArmed ? (
+                <Square size={24} fill="currentColor" />
+              ) : (
+                <Play size={32} className="ml-1" fill="currentColor" />
+              )}
+            </button>
 
-          <div className="w-14" />
-        </div>
-      )}
-    </div>
+            <div className="w-14" />
+          </div>
+        )
+      }
+    </div >
   );
 };
 

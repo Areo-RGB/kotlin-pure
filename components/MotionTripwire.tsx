@@ -14,6 +14,7 @@ interface MotionTripwireProps {
   enableTorch?: boolean;
   allowVerticalDrag?: boolean;
   useWebGL?: boolean; // Enable GPU-accelerated motion detection
+  facingMode?: 'user' | 'environment';
 }
 
 // WebGL Shaders for GPU-accelerated motion detection
@@ -370,6 +371,7 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
   enableTorch = false,
   allowVerticalDrag = false,
   useWebGL = true,
+  facingMode = 'environment',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -393,13 +395,15 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: "environment",
           width: { ideal: 640 },
           height: { ideal: 480 },
+          facingMode: facingMode
         },
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -419,7 +423,7 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
       if (track) {
         track
           .applyConstraints({ advanced: [{ torch: false }] as any })
-          .catch(() => {});
+          .catch(() => { });
       }
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -439,7 +443,7 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
     webglDetectorRef.current = new WebGLMotionDetector();
     startCamera();
     return () => stopCamera();
-  }, []);
+  }, [facingMode]);
 
   // Reset detectors when isActive changes to true (arming)
   // This prevents false triggers from stale frame comparisons
@@ -612,8 +616,8 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
           color === "red"
             ? "#ef4444"
             : color === "blue"
-            ? "#3b82f6"
-            : "#10b981";
+              ? "#3b82f6"
+              : "#10b981";
         const overlayColor = isActive ? activeColor : "#6b7280"; // Gray if inactive
 
         // Draw Overlay
@@ -621,8 +625,8 @@ export const MotionTripwire: React.FC<MotionTripwireProps> = ({
           ? color === "red"
             ? "rgba(239, 68, 68, 0.3)"
             : color === "blue"
-            ? "rgba(59, 130, 246, 0.3)"
-            : "rgba(16, 185, 129, 0.3)"
+              ? "rgba(59, 130, 246, 0.3)"
+              : "rgba(16, 185, 129, 0.3)"
           : "rgba(107, 114, 128, 0.3)";
 
         ctx.fillRect(zoneX, zoneY, tripwireWidth, zoneH);

@@ -11,6 +11,7 @@ export interface MotionGateDevice {
   name: string;
   role: MotionGateRole;
   lastSeen: number;
+  cameraFacing?: 'user' | 'environment';
   isOnline?: boolean; // computed on client
 }
 
