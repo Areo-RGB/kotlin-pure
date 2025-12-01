@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">ScoreSync</string>
+    <string name="title_tools">Tools</string>
+    <string name="desc_tools">Access suite of utilities</string>
+    <string name="title_motion_gate">Motion Gate</string>
+    <string name="desc_motion_gate">Optical Tripwire &amp; Timing Systems</string>
+    <string name="title_native_lan">Native LAN Server</string>
+    <string name="desc_native_lan">Run a native WebSocket signaling server on THIS device.</string>
+    <string name="title_multi_device">Multi-Device (Cloud)</string>
+    <string name="desc_multi_device">Synchronize multiple devices via the internet.</string>
+    <string name="title_single_device">Single Device</string>
+    <string name="desc_single_device">Uses the camera of this device as a standalone tripwire stopwatch.</string>
+</resources>

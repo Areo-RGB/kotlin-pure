@@ -1,13 +1,10 @@
-
 """
-Build and Deploy Script for NFC Android App
-============================================
+Build and Deploy Script for Kotlin Android App
+==============================================
 This script:
-1. Builds the web app (vite build)
-2. Syncs Capacitor
-3. Builds Android APK (debug)
-4. Finds all connected ADB devices
-5. Installs APK on all connected devices
+1. Builds the Kotlin Android APK (debug)
+2. Finds all connected ADB devices
+3. Installs APK on all connected devices
 """
 
 import subprocess
@@ -21,22 +18,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Configuration
 # Resolve paths relative to this script
 SCRIPT_DIR = Path(__file__).resolve().parent
-WEB_APP_DIR = SCRIPT_DIR.parent
-ANDROID_PROJECT_DIR = WEB_APP_DIR / "android"
-# Capacitor sync copies to android/app/src/main/assets/public usually, 
-# but let's trust the capacitor config. 
-# We don't need to manually copy to www if we run cap sync.
-DIST_DIR = WEB_APP_DIR / "dist"
-APK_PATH = ANDROID_PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+ROOT_DIR = SCRIPT_DIR.parent
+KOTLIN_APP_DIR = ROOT_DIR / "kotlin-app"
+APK_PATH = KOTLIN_APP_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 
 IS_WINDOWS = platform.system() == "Windows"
 
 # Colors for terminal output
 class Colors:
     if IS_WINDOWS:
-        # Simple fallback for Windows CMD if ANSI not supported, 
-        # though modern Windows Terminal supports it.
-        # We'll keep them as is, but could disable if needed.
         os.system('color') # Enable ANSI support in Windows CMD
         
     HEADER = '\033[95m'
@@ -67,8 +57,6 @@ def resolve_command(cmd_name: str) -> str:
     """Resolve the full path to a command, especially important on Windows."""
     path = shutil.which(cmd_name)
     if not path:
-        # On Windows, sometimes 'npm' is not found but 'npm.cmd' is, 
-        # shutil.which should handle PATHEXT, but let's be safe.
         if IS_WINDOWS and not cmd_name.lower().endswith('.cmd') and not cmd_name.lower().endswith('.exe'):
              path = shutil.which(f"{cmd_name}.cmd")
              if not path:
@@ -89,7 +77,7 @@ def run_command(cmd: list, cwd: Path = None, capture_output: bool = False) -> su
             capture_output=capture_output,
             text=True,
             check=True,
-            shell=False # shell=False is generally safer and works if full path is resolved
+            shell=False 
         )
         return result
     except subprocess.CalledProcessError as e:
@@ -152,44 +140,20 @@ def install_on_device(device: dict, apk_path: Path) -> tuple:
     except Exception as e:
         return (device_id, False, f"{device_model}: {str(e)}")
 
-def build_web_app():
-    """Build the Vite web app."""
-    print_step(1, "Building web app (vite build)")
-
-    # Check if pnpm is available, otherwise use npm
-    package_manager = "pnpm" if shutil.which("pnpm") else "npm"
-    print_info(f"Using {package_manager}")
-
-    run_command([package_manager, "run", "build"], cwd=WEB_APP_DIR)
-
-    if not DIST_DIR.exists():
-        raise Exception(f"Build output not found at {DIST_DIR}")
-
-    print_success("Web app built successfully")
-
-def sync_capacitor():
-    """Run Capacitor sync."""
-    print_step(2, "Syncing Capacitor")
-
-    # npx might need resolution
-    run_command(["npx", "cap", "sync", "android"], cwd=WEB_APP_DIR)
-
-    print_success("Capacitor updated and synced")
-
 def build_android():
     """Build Android APK (debug)."""
-    print_step(3, "Building Android APK (debug)")
+    print_step(1, "Building Kotlin Android APK (debug)")
 
     if IS_WINDOWS:
-        gradlew = ANDROID_PROJECT_DIR / "gradlew.bat"
+        gradlew = KOTLIN_APP_DIR / "gradlew.bat"
         cmd = [str(gradlew), "assembleDebug"]
     else:
-        gradlew = ANDROID_PROJECT_DIR / "gradlew"
+        gradlew = KOTLIN_APP_DIR / "gradlew"
         # Make gradlew executable
         os.chmod(gradlew, 0o755)
         cmd = ["./gradlew", "assembleDebug"]
 
-    run_command(cmd, cwd=ANDROID_PROJECT_DIR)
+    run_command(cmd, cwd=KOTLIN_APP_DIR)
 
     if not APK_PATH.exists():
         raise Exception(f"APK not found at {APK_PATH}")
@@ -200,7 +164,7 @@ def build_android():
 
 def deploy_to_devices():
     """Find connected devices and install APK on all of them."""
-    print_step(4, "Deploying to connected devices")
+    print_step(2, "Deploying to connected devices")
 
     devices = get_connected_devices()
 
@@ -245,22 +209,16 @@ def deploy_to_devices():
 
 def main():
     print(f"\n{Colors.BOLD}{Colors.HEADER}╔══════════════════════════════════════════╗{Colors.ENDC}")
-    print(f"{Colors.BOLD}{Colors.HEADER}║     NFC App Build & Deploy Script        ║{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.HEADER}║   Kotlin App Build & Deploy Script       ║{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.HEADER}╚══════════════════════════════════════════╝{Colors.ENDC}")
 
     try:
         # Check prerequisites
-        if not WEB_APP_DIR.exists():
-            print_error(f"Web app directory not found: {WEB_APP_DIR}")
-            sys.exit(1)
-
-        if not ANDROID_PROJECT_DIR.exists():
-            print_error(f"Android project directory not found: {ANDROID_PROJECT_DIR}")
+        if not KOTLIN_APP_DIR.exists():
+            print_error(f"Kotlin app directory not found: {KOTLIN_APP_DIR}")
             sys.exit(1)
 
         # Run build steps
-        build_web_app()
-        sync_capacitor()
         build_android()
         deploy_to_devices()
 
